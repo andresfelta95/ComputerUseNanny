@@ -39,32 +39,39 @@
 #define SWITCH PD2
 
 /* Define constants */
-//  Color Struc for NeoPixel
-typedef struct
-{
-    uint8_t red;
-    uint8_t green;
-    uint8_t blue;
-} color_t;
 //  Color constants
-color_t RED = {125, 0, 0};
-color_t GREEN = {0, 125, 0};
-color_t BLUE = {0, 0, 125};
-color_t YELLOW = {125, 125, 0};
-color_t PURPLE = {125, 0, 125};
-color_t CYAN = {0, 125, 125};
-color_t WHITE = {125, 125, 125};
-color_t PINK = {125, 0, 50};
-color_t ORANGE = {125, 50, 0};
-color_t LIGHT_BLUE = {0, 50, 125};
-color_t LIGHT_GREEN = {0, 125, 50};
-color_t MAGENTA = {50, 0, 125};
-color_t LIGHT_YELLOW = {125, 125, 50};
-color_t LIGHT_PURPLE = {125, 50, 125};
-//  Color array
-color_t color_array[15] = {RED, GREEN, BLUE, YELLOW, PURPLE, CYAN, WHITE, PINK, ORANGE, LIGHT_BLUE, LIGHT_GREEN, MAGENTA, LIGHT_YELLOW, LIGHT_PURPLE};
-//  Current color
-color_t current_color = RED;
+typedef enum
+{
+    RED,
+    GREEN,
+    BLUE,
+    YELLOW,
+    PURPLE,
+    CYAN,
+    WHITE,
+    PINK,
+    ORANGE,
+    LIGHT_BLUE,
+    LIGHT_GREEN,
+    MAGENTA,
+    LIGHT_YELLOW,
+    LIGHT_PURPLE
+} color_enum_t;
+// const color_t RED = {125, 0, 0};
+// const color_t GREEN = {0, 125, 0};
+// const color_t BLUE = {0, 0, 125};
+// const color_t YELLOW = {125, 125, 0};
+// const color_t PURPLE = {125, 0, 125};
+// const color_t CYAN = {0, 125, 125};
+// const color_t WHITE = {125, 125, 125};
+// const color_t PINK = {125, 0, 50};
+// const color_t ORANGE = {125, 50, 0};
+// const color_t LIGHT_BLUE = {0, 0, 50};
+// const color_t LIGHT_GREEN = {0, 50, 0};
+// const color_t MAGENTA = {50, 0, 50};
+// const color_t LIGHT_YELLOW = {50, 50, 0};
+// const color_t LIGHT_PURPLE = {50, 0, 50};
+
 
 /* Global variables */
 //  Time of flight sensor variables
@@ -79,6 +86,9 @@ uint32_t time_to_change_color = 0;
 
 //  Switch variables
 uint8_t switch_status = 0;
+
+//  Color variables
+color_enum_t current_color = RED;
 
 //  Other variables
 uint8_t i = 0;
@@ -108,6 +118,7 @@ void start_Animation(void);
 void tof_check_distance(void);
 void go_to_sleep(void);
 void change_color(void);
+void set_color(color_enum_t color);
 
 
 
@@ -138,6 +149,11 @@ int main(void)
 
     /* Initialize timer */
     Timer_Init(Timer_Prescale_64, 250); //  1 ms (250 * 64 = 16 000 000 / 16 000 = 1000)
+    
+    /* Enable sleep mode for power saving */
+    sleep_enable();
+
+    /* Enable global interrupts */
     // sei();
 
     /* Initialize switch */
@@ -156,8 +172,10 @@ int main(void)
         /* Check distance with Time of Flight sensor */
         tof_check_distance();
 
+        SSD1306_Clear();
+
         /* Check switch status */
-        if(!(PIND & (1 << SWITCH)))
+        if((PIND & (1 << SWITCH)))
         {
             switch_status = 1;
         }
@@ -166,11 +184,32 @@ int main(void)
             switch_status = 0;
         }
 
-        /* Check if it is time to sleep */
-        if(time_to_sleep >= 60000)
+        /* Change color */
+        if(switch_status == 1)
         {
-            // go_to_sleep();
+            change_color();
+            switch_status = 0;
         }
+
+        /* Check if there is someone in front of the computer */
+        if(tof_distance < 100)
+        {
+            /* Turn on NeoPixel */
+            set_color(current_color);
+            neopixel_update();
+        }
+        else
+        {
+            /* Turn off NeoPixel */
+            neopixel_turn_off_all();
+            neopixel_update();
+        }
+
+        /* Display distance on OLED display */
+        sprintf(str, "Distance: %u", tof_distance);
+        SSD1306_StringXY(0, 0, str);
+        SSD1306_Render();
+
     }
 }
 
@@ -211,28 +250,27 @@ void start_Animation(void)
         SSD1306_Clear();
         SSD1306_Circle(i, 16, 10);
         SSD1306_Render();
-        _delay_ms(5);
     }
     SSD1306_Clear();
     SSD1306_Render();
 
     //  Animation for the NeoPixel
-    neopixel_set_color_all(CYAN.red, CYAN.green, CYAN.blue);
+    set_color(CYAN);
     neopixel_update();
     _delay_ms(1000);
-    neopixel_set_color_all(PURPLE.red, PURPLE.green, PURPLE.blue);
+    set_color(MAGENTA);
     neopixel_update();
     _delay_ms(1000);
-    neopixel_set_color_all(RED.red, RED.green, RED.blue);
+    set_color(YELLOW);
     neopixel_update();
     _delay_ms(1000);
-    neopixel_set_color_all(GREEN.red, GREEN.green, GREEN.blue);
+    set_color(WHITE);
     neopixel_update();
     _delay_ms(1000);
-    neopixel_set_color_all(BLUE.red, BLUE.green, BLUE.blue);
+    set_color(RED);
     neopixel_update();
     _delay_ms(1000);
-    neopixel_set_color_all(YELLOW.red, YELLOW.green, YELLOW.blue);
+    set_color(GREEN);
     neopixel_update();
     _delay_ms(1000);
     neopixel_turn_off_all();
@@ -278,4 +316,87 @@ void go_to_sleep(void)
     SSD1306_DisplayOn();
 }
 
+//  Change color
+void change_color(void)
+{
+    //  Check switch status
+    
+    //  Change color
+    if (current_color == LIGHT_PURPLE)
+    {
+        current_color = RED;
+    }
+    else
+    {
+        current_color++;
+    }
+    set_color(current_color);
+    neopixel_update();
+    
+}
+
+//  Set color to NeoPixel
+void set_color(color_enum_t color)
+{
+    switch(color)
+    {
+        case RED:
+            neopixel_set_color_all(125, 0, 0);
+            break;
+        case GREEN:
+            neopixel_set_color_all(0, 125, 0);
+            break;
+        case BLUE:
+            neopixel_set_color_all(0, 0, 125);
+            break;
+        case YELLOW:
+            neopixel_set_color_all(125, 125, 0);
+            break;
+        case CYAN:
+            neopixel_set_color_all(0, 125, 125);
+            break;
+        case PURPLE:
+            neopixel_set_color_all(125, 0, 125);
+            break;
+        case WHITE:
+            neopixel_set_color_all(125, 125, 125);
+            break;
+        case PINK:
+            neopixel_set_color_all(125, 0, 50);
+            break;
+        case ORANGE:
+            neopixel_set_color_all(125, 50, 0);
+            break;
+        case LIGHT_BLUE:
+            neopixel_set_color_all(0, 50, 125);
+            break;
+        case LIGHT_GREEN:
+            neopixel_set_color_all(0, 125, 50);
+            break;
+        case MAGENTA:
+            neopixel_set_color_all(125, 0, 100);
+            break;
+        case LIGHT_YELLOW:
+            neopixel_set_color_all(125, 100, 0);
+            break;
+        case LIGHT_PURPLE:
+            neopixel_set_color_all(125, 0, 100);
+            break;
+        default:
+            neopixel_set_color_all(0, 0, 0);
+            break;
+    }
+}
+
 /* Interrupt service routines */
+
+//  Timer interrupt
+ISR(TIMER1_COMPA_vect)
+{
+    //  Increment time to sleep
+    time_to_sleep++;
+    //  Increment time to blink
+    time_to_blink++;
+    //  Increment time to change color
+    time_to_change_color++;
+}
