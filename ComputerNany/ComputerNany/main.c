@@ -58,10 +58,17 @@ color_t PINK = {125, 0, 50};
 color_t ORANGE = {125, 50, 0};
 color_t LIGHT_BLUE = {0, 50, 125};
 color_t LIGHT_GREEN = {0, 125, 50};
+color_t MAGENTA = {50, 0, 125};
+color_t LIGHT_YELLOW = {125, 125, 50};
+color_t LIGHT_PURPLE = {125, 50, 125};
+//  Color array
+color_t color_array[15] = {RED, GREEN, BLUE, YELLOW, PURPLE, CYAN, WHITE, PINK, ORANGE, LIGHT_BLUE, LIGHT_GREEN, MAGENTA, LIGHT_YELLOW, LIGHT_PURPLE};
+//  Current color
+color_t current_color = RED;
 
 /* Global variables */
 //  Time of flight sensor variables
-VL53L1X_Error_t tof_status;
+VL53L1X_ERROR tof_status;
 uint8_t state = 0;
 uint16_t tof_distance;
 
@@ -97,6 +104,10 @@ char str4[20];
 /* Function prototypes */
 void tof_init(void);
 void switch_init(void);
+void start_Animation(void);
+void tof_check_distance(void);
+void go_to_sleep(void);
+void change_color(void);
 
 
 
@@ -121,10 +132,13 @@ int main(void)
 
     /* Initialize Time of Flight sensor */
     tof_init();
+    
+    /* Start animation */
+    start_Animation();
 
     /* Initialize timer */
     Timer_Init(Timer_Prescale_64, 250); //  1 ms (250 * 64 = 16 000 000 / 16 000 = 1000)
-    sei();
+    // sei();
 
     /* Initialize switch */
     switch_init();
@@ -135,9 +149,28 @@ int main(void)
     time_to_change_color = 0;
     switch_status = 0;
 
+
     /* Main loop */
     while (1) 
     {
+        /* Check distance with Time of Flight sensor */
+        tof_check_distance();
+
+        /* Check switch status */
+        if(!(PIND & (1 << SWITCH)))
+        {
+            switch_status = 1;
+        }
+        else
+        {
+            switch_status = 0;
+        }
+
+        /* Check if it is time to sleep */
+        if(time_to_sleep >= 60000)
+        {
+            // go_to_sleep();
+        }
     }
 }
 
@@ -166,3 +199,83 @@ void switch_init(void)
     //  Enable pull-up resistor
     PORTD |= (1 << SWITCH);
 }
+
+//  Start animation
+void start_Animation(void)
+{
+    //  Animation for the OLED display
+    SSD1306_StringXY(0, 0, "Hello!");
+    // Move a circle across the screen
+    for (i = 0; i < 128; i++)
+    {
+        SSD1306_Clear();
+        SSD1306_Circle(i, 16, 10);
+        SSD1306_Render();
+        _delay_ms(5);
+    }
+    SSD1306_Clear();
+    SSD1306_Render();
+
+    //  Animation for the NeoPixel
+    neopixel_set_color_all(CYAN.red, CYAN.green, CYAN.blue);
+    neopixel_update();
+    _delay_ms(1000);
+    neopixel_set_color_all(PURPLE.red, PURPLE.green, PURPLE.blue);
+    neopixel_update();
+    _delay_ms(1000);
+    neopixel_set_color_all(RED.red, RED.green, RED.blue);
+    neopixel_update();
+    _delay_ms(1000);
+    neopixel_set_color_all(GREEN.red, GREEN.green, GREEN.blue);
+    neopixel_update();
+    _delay_ms(1000);
+    neopixel_set_color_all(BLUE.red, BLUE.green, BLUE.blue);
+    neopixel_update();
+    _delay_ms(1000);
+    neopixel_set_color_all(YELLOW.red, YELLOW.green, YELLOW.blue);
+    neopixel_update();
+    _delay_ms(1000);
+    neopixel_turn_off_all();
+    neopixel_update();
+}
+
+//  Check distance with Time of Flight sensor
+void tof_check_distance(void)
+{
+    /*Variables*/
+    uint8_t _DataReady = 0;
+    uint8_t _RangeStatus = 0;
+    //  Start continuous ranging measurements
+    tof_status = VL53L1X_StartRanging(0);
+    //  Wait for new measurement
+    while (_DataReady == 0)
+    {
+        tof_status = VL53L1X_CheckForDataReady(0, &_DataReady);
+    }
+    tof_status = VL53L1X_GetRangeStatus(0, &_RangeStatus);
+    tof_status = VL53L1X_GetDistance(0, &tof_distance);
+    tof_status = VL53L1X_ClearInterrupt(0);
+
+    //  Stop continuous ranging measurements
+    tof_status = VL53L1X_StopRanging(0);
+    
+}
+
+//  Go to sleep
+void go_to_sleep(void)
+{
+    //  Turn off display
+    SSD1306_DisplayOff();
+    //  Turn off NeoPixel
+    neopixel_turn_off_all();
+    neopixel_update();
+    //  Go to sleep
+    set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+    sleep_enable();
+    sleep_mode();
+    sleep_disable();
+    //  Turn on display
+    SSD1306_DisplayOn();
+}
+
+/* Interrupt service routines */
