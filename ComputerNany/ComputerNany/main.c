@@ -91,12 +91,12 @@ uint8_t switch_status = 0;
 color_enum_t current_color = RED;
 
 //  Other variables
-uint8_t i = 0;
-uint8_t j = 0;
-uint8_t k = 0;
-uint8_t l = 0;
-uint8_t m = 0;
-uint8_t n = 0;
+uint8_t user_is_here = 0;
+volatile uint8_t seconds = 0;
+volatile uint8_t minutes = 0;
+volatile uint8_t leave_seconds = 0;
+volatile uint8_t here_ticks = 0;
+volatile uint8_t leave_ticks = 0;
 uint8_t o = 0;
 uint8_t p = 0;
 uint8_t q = 0;
@@ -148,13 +148,11 @@ int main(void)
     start_Animation();
 
     /* Initialize timer */
-    Timer_Init(Timer_Prescale_64, 250); //  1 ms (250 * 64 = 16 000 000 / 16 000 = 1000)
+    Timer_Init(Timer_Prescale_64, 25000);   //  16E6 / 64 / 2500 = 10 Hz
     
     /* Enable sleep mode for power saving */
     sleep_enable();
 
-    /* Enable global interrupts */
-    // sei();
 
     /* Initialize switch */
     switch_init();
@@ -165,10 +163,15 @@ int main(void)
     time_to_change_color = 0;
     switch_status = 0;
 
+    /* Enable global interrupts */
+    sleep_enable();
+    sei();
 
     /* Main loop */
     while (1) 
     {
+        //  Call the interrupt
+        sleep_mode();
         /* Check distance with Time of Flight sensor */
         tof_check_distance();
 
@@ -192,14 +195,20 @@ int main(void)
         }
 
         /* Check if there is someone in front of the computer */
-        if(tof_distance < 100)
+        if(tof_distance < 500)
         {
+            user_is_here = 1; 
             /* Turn on NeoPixel */
             set_color(current_color);
             neopixel_update();
+            /* Display time on OLED display */
+            sprintf(str, "Time: %u:%u", minutes, seconds);
+            SSD1306_StringXY(0, 0, str);
+            SSD1306_Render();
         }
         else
         {
+            user_is_here = 0;
             /* Turn off NeoPixel */
             neopixel_turn_off_all();
             neopixel_update();
@@ -207,8 +216,11 @@ int main(void)
 
         /* Display distance on OLED display */
         sprintf(str, "Distance: %u", tof_distance);
-        SSD1306_StringXY(0, 0, str);
+        SSD1306_StringXY(0, 3, str);
         SSD1306_Render();
+
+        /* Sleep for 500ms*/
+        _delay_ms(500);
 
     }
 }
@@ -243,9 +255,9 @@ void switch_init(void)
 void start_Animation(void)
 {
     //  Animation for the OLED display
-    SSD1306_StringXY(0, 0, "Hello!");
+    // SSD1306_StringXY(0, 0, "Hello!");
     // Move a circle across the screen
-    for (i = 0; i < 128; i++)
+    for (uint8_t i = 0; i < 128; i += 4)
     {
         SSD1306_Clear();
         SSD1306_Circle(i, 16, 10);
@@ -393,10 +405,52 @@ void set_color(color_enum_t color)
 //  Timer interrupt
 ISR(TIMER1_COMPA_vect)
 {
-    //  Increment time to sleep
-    time_to_sleep++;
-    //  Increment time to blink
-    time_to_blink++;
-    //  Increment time to change color
-    time_to_change_color++;
+    // rearm the output compare operation   
+    OCR1A += 25000; // 100ms intervals 
+
+    if (user_is_here)
+    {
+        //  Reset leave_seconds
+        leave_seconds = 0;
+        //  Increment the here_Ticks
+        if (++here_ticks >= 100)
+        {
+            here_ticks = 0;
+        }
+        if (here_ticks % 10 == 0)
+        {
+            //  Increment seconds
+            if (++seconds >= 60)
+            {
+                seconds = 0;
+                //  Increment minutes
+                if (++minutes >= 60)
+                {
+                    minutes = 0;
+                }
+            }
+        }
+    }
+    // If user left but it may come back
+    else if (!user_is_here && here_ticks > 0 && leave_seconds < 10)
+    {
+        //  Increment leave_ticks
+        if (++leave_seconds % 10 == 0)
+        {
+            //  Increment leave_seconds
+            ++leave_seconds;
+        }
+    }
+    //  If user left and it won't come back
+    else if (!user_is_here && leave_seconds >= 10)
+    {
+        //  Reset here_ticks
+        here_ticks = 0;
+        //  Reset leave_seconds
+        leave_seconds = 0;
+        //  Reset seconds
+        seconds = 0;
+        //  Reset minutes
+        minutes = 0;
+    }
 }
