@@ -97,7 +97,7 @@ volatile uint8_t minutes = 0;
 volatile uint8_t leave_seconds = 0;
 volatile uint8_t here_ticks = 0;
 volatile uint8_t leave_ticks = 0;
-uint8_t o = 0;
+volatile uint8_t waiting_user = 0;
 uint8_t p = 0;
 uint8_t q = 0;
 uint8_t r = 0;
@@ -162,6 +162,7 @@ int main(void)
     time_to_blink = 0;
     time_to_change_color = 0;
     switch_status = 0;
+    waiting_user = 0;
 
     /* Enable global interrupts */
     sleep_enable();
@@ -198,26 +199,55 @@ int main(void)
         if(tof_distance < 500)
         {
             user_is_here = 1; 
-            /* Turn on NeoPixel */
-            set_color(current_color);
-            neopixel_update();
-            /* Display time on OLED display */
-            sprintf(str, "Time: %u:%u", minutes, seconds);
-            SSD1306_StringXY(0, 0, str);
-            SSD1306_Render();
+            
+            if (time_to_blink)
+            {
+                SSD1306_StringXY(0, 0, "Take a break!");
+                SSD1306_StringXY(1, 1, "Take a break!");
+                SSD1306_StringXY(2, 2, "Take a break!");
+                SSD1306_StringXY(3, 3, "Take a break!");
+                SSD1306_Render();
+                if(time_to_change_color)
+                {
+                    time_to_change_color = 0;
+                    set_color(current_color);
+                    neopixel_update();
+                }
+                else
+                {
+                    time_to_change_color = 1;
+                    neopixel_turn_off_all();
+                    neopixel_update();
+                }
+            }
+            else
+            {
+                /* Turn on NeoPixel */
+                set_color(current_color);
+                neopixel_update();
+                /* Display time on OLED display */
+                sprintf(str, "Time: %u:%u", minutes, seconds);
+                sprintf(str2, "Distance: %u.%u cm", tof_distance/10, tof_distance%10);
+                SSD1306_StringXY(0, 0, str);
+                SSD1306_StringXY(0, 3, str2);
+                SSD1306_Render();
+            }
+            
         }
         else
         {
             user_is_here = 0;
+            if (waiting_user)
+            {
+                /* Display Leave seconds on OLED display */
+                sprintf(str, "Waiting: %u", ( 10 - leave_seconds));
+                SSD1306_StringXY(0, 0, str);
+                SSD1306_Render();
+            }
             /* Turn off NeoPixel */
             neopixel_turn_off_all();
             neopixel_update();
         }
-
-        /* Display distance on OLED display */
-        sprintf(str, "Distance: %u", tof_distance);
-        SSD1306_StringXY(0, 3, str);
-        SSD1306_Render();
 
         /* Sleep for 500ms*/
         _delay_ms(500);
@@ -426,7 +456,14 @@ ISR(TIMER1_COMPA_vect)
                 //  Increment minutes
                 if (++minutes >= 60)
                 {
+                    //  Set the flag for blink
+                    time_to_blink = 1;
                     minutes = 0;
+                }
+                if (minutes >= 1)
+                {
+                    //  Set the flag for blink
+                    time_to_blink = 1;
                 }
             }
         }
@@ -434,8 +471,9 @@ ISR(TIMER1_COMPA_vect)
     // If user left but it may come back
     else if (!user_is_here && here_ticks > 0 && leave_seconds < 10)
     {
+        waiting_user = 1;
         //  Increment leave_ticks
-        if (++leave_seconds % 10 == 0)
+        if (++leave_ticks % 10 == 0)
         {
             //  Increment leave_seconds
             ++leave_seconds;
@@ -452,5 +490,9 @@ ISR(TIMER1_COMPA_vect)
         seconds = 0;
         //  Reset minutes
         minutes = 0;
+        //  Reset time_to_blink
+        time_to_blink = 0;
+        //  Reset waiting_user
+        waiting_user = 0;
     }
 }
