@@ -460,11 +460,12 @@ ISR(TIMER1_COMPA_vect)
                     time_to_blink = 1;
                     minutes = 0;
                 }
-                if (minutes >= 1)
-                {
-                    //  Set the flag for blink
-                    time_to_blink = 1;
-                }
+                // Test code
+                // if (minutes >= 1)
+                // {
+                //     //  Set the flag for blink
+                //     time_to_blink = 1;
+                // }
             }
         }
     }
